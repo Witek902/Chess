@@ -24,17 +24,16 @@
 
 static const bool randomizeOrder = true;
 static const uint32_t c_printPgnFrequency = 8;
-static const uint32_t c_minNodes = 8000;
-static const uint32_t c_maxNodes = 8000;
+static const uint32_t c_minNodes = 10000;
+static const uint32_t c_maxNodes = 20000;
 static const uint32_t c_maxDepth = 24;
-static const int32_t c_maxEval = 1200;
-static const int32_t c_openingMaxEval = 500;
+static const int32_t c_maxEval = 1000;
+static const int32_t c_openingMaxEval = 400;
 static const int32_t c_multiPv = 3;
-static const int32_t c_multiPvMaxPly = 2;
+static const int32_t c_multiPvMaxPly = 0;
 static const int32_t c_multiPvScoreTreshold = 50;
 static const uint32_t c_minRandomMoves = 1;
-static const uint32_t c_maxRandomMoves = 8;
-static const float c_blunderProbability = 0.001f;
+static const uint32_t c_maxRandomMoves = 6;
 
 bool LoadOpeningPositions(const std::string& path, std::vector<PackedPosition>& outPositions)
 {
@@ -108,6 +107,8 @@ static bool SelfPlayThreadFunc(
     const std::vector<PackedPosition>& openingPositions,
     SelfPlayStats& stats)
 {
+
+
     const size_t c_transpositionTableSize = 1ull * 1024ull * 1024ull;
 
     std::random_device rd;
@@ -190,17 +191,16 @@ static bool SelfPlayThreadFunc(
         {
             const uint32_t searchIndex = halfMoveNumber % 2;
 
-            const bool playBlunder = std::bernoulli_distribution(c_blunderProbability)(gen);
-
             SearchParam searchParam{ tt[searchIndex]};
             searchParam.debugLog = false;
             searchParam.allowPruningInPvNodes = false;
             searchParam.useRootTablebase = false;
-            searchParam.evalRandomization = 1;
+            searchParam.evalRandomization = 2;
             searchParam.seed = searchSeed;
-            searchParam.numPvLines = (halfMoveNumber < c_multiPvMaxPly || playBlunder) ? c_multiPv : 1;
+            searchParam.numPvLines = halfMoveNumber < c_multiPvMaxPly ? c_multiPv : 1;
             searchParam.limits.maxDepth = c_maxDepth;
             searchParam.limits.maxNodesSoft = c_minNodes + (c_maxNodes - c_minNodes) * std::max(0, 80 - halfMoveNumber) / 80;
+            searchParam.limits.maxNodes = searchParam.limits.maxNodesSoft * 8;
 
             searchResult.clear();
             tt[searchIndex].NextGeneration();
@@ -254,41 +254,39 @@ static bool SelfPlayThreadFunc(
             ASSERT(moveSuccess);
             (void)moveSuccess;
 
-            if (std::abs(moveScore) < 5)
+            if (std::abs(moveScore) <= 5)
                 drawScoreCounter++;
             else
                 drawScoreCounter = 0;
 
             // adjudicate draw if eval is zero
             if (drawScoreCounter > 8 &&
-                halfMoveNumber >= 40 &&
-                game.GetPosition().GetHalfMoveCount() > 10)
+                halfMoveNumber >= 80 &&
+                game.GetPosition().GetHalfMoveCount() > 8)
             {
                 game.SetScore(Game::Score::Draw);
             }
 
-            // adjudicate win
-            if (!isCheck)
+            // adjudicate win for white
+            if (moveScore > c_maxEval && eval > c_maxEval / 4)
             {
-                if (moveScore > c_maxEval && eval > c_maxEval / 2)
-                {
-                    whiteWinsCounter++;
-                    if (whiteWinsCounter > 4) game.SetScore(Game::Score::WhiteWins);
-                }
-                else
-                {
-                    whiteWinsCounter = 0;
-                }
+                whiteWinsCounter++;
+                if (whiteWinsCounter >= 4) game.SetScore(Game::Score::WhiteWins);
+            }
+            else
+            {
+                whiteWinsCounter = 0;
+            }
 
-                if (moveScore < -c_maxEval && eval < -c_maxEval / 2)
-                {
-                    blackWinsCounter++;
-                    if (blackWinsCounter > 4) game.SetScore(Game::Score::BlackWins);
-                }
-                else
-                {
-                    blackWinsCounter = 0;
-                }
+            // adjudicate win for black
+            if (moveScore < -c_maxEval && eval < -c_maxEval / 4)
+            {
+                blackWinsCounter++;
+                if (blackWinsCounter >= 4) game.SetScore(Game::Score::BlackWins);
+            }
+            else
+            {
+                blackWinsCounter = 0;
             }
 
             // tablebase adjudication
@@ -348,7 +346,7 @@ static bool SelfPlayThreadFunc(
 
 void SelfPlay(const std::vector<std::string>& args)
 {
-    g_syzygyProbeLimit = 7;
+    g_syzygyProbeLimit = 6;
 
     uint32_t nameSeed = 0;
     {
