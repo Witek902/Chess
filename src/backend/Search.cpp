@@ -953,7 +953,7 @@ PvLine Search::AspirationWindowSearch(ThreadData& thread, const AspirationWindow
         }
 
         // increase window, fallback to full window after some threshold
-        window += window / 3;
+        window += window / 4;
         if (window > AspirationWindowMaxSize) window = CheckmateValue;
     }
 
