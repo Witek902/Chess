@@ -30,6 +30,8 @@
 namespace {
 
 static constexpr int32_t c_evalSaturationTreshold   = 8000;
+static constexpr ScoreType c_tempo = 8;
+static constexpr ScoreType c_castlingRightsBonus = 4;
 
 } // namespace
 
@@ -226,6 +228,12 @@ ScoreType Evaluate(NodeInfo& node, AccumulatorCache& cache)
         4 * (whiteQueens + blackQueens));
     value = value * (52 + gamePhase) / 64;
 
+    // apply castling rights bonus
+    {
+        const ScoreType bonus = c_castlingRightsBonus * ((ScoreType)PopCount(pos.GetWhitesCastlingRights()) - (ScoreType)PopCount(pos.GetBlacksCastlingRights()));
+        value += pos.GetSideToMove() == White ? bonus : -bonus;
+    }
+
     // saturate eval value so it doesn't exceed KnownWinValue
     if (value > c_evalSaturationTreshold)
         value = c_evalSaturationTreshold + (value - c_evalSaturationTreshold) / 8;
@@ -234,7 +242,7 @@ ScoreType Evaluate(NodeInfo& node, AccumulatorCache& cache)
 
     ASSERT(value > -KnownWinValue && value < KnownWinValue);
 
-    return (ScoreType)value;
+    return (ScoreType)value + c_tempo;
 }
 
 void EnsureAccumulatorUpdated(NodeInfo& node, AccumulatorCache& cache)
